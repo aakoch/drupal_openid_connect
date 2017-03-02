@@ -428,20 +428,33 @@ function openid_connect_complete_authorization($client, $tokens, &$destination) 
       return FALSE;
     }
     // Check whether there is an e-mail address conflict.
-    if (user_load_by_mail($userinfo['email'])) {
-      drupal_set_message(
-        t('The e-mail address is already taken: @email',
-          array(
-            '@email' => $userinfo['email'],
-          )
-        ),
-        'error'
-      );
-      return FALSE;
+    $account = user_load_by_mail($userinfo['email']);
+    if ($account) {
+
+      // aakoch - 2017.03.01 - If an account already exists, check to see if it 
+      // was set up by an admin but not yet activated. If it was activated already, 
+      // then show an error. If it wasn't already activated, then activate the account
+      if (account_already_activated($account)) {
+        drupal_set_message(
+          t('The e-mail address is already taken: @email',
+            array(
+              '@email' => $userinfo['email'],
+            )
+          ),
+          'error'
+        );
+        return FALSE;
+      }
+      else {
+        // tie login to existing account
+        openid_connect_connect_account($account, $client->getPluginId(), $sub);
+      }
+    }
+    else {
+      // Create a new account.
+      $account = openid_connect_create_user($sub, $userinfo, $client->getPluginId());
     }
 
-    // Create a new account.
-    $account = openid_connect_create_user($sub, $userinfo, $client->getPluginId());
     openid_connect_save_userinfo($account, $userinfo);
 
     $authmap->createAssociation($account, $client->getPluginId(), $sub);
@@ -520,4 +533,21 @@ function openid_connect_connect_current_user($client, $tokens) {
   ));
 
   return TRUE;
+}
+
+/**
+ * Connect the current user's account to an external provider.
+ *
+ * @param object $account
+ *   The account.
+ *
+ * @return bool
+ *   TRUE on success, FALSE on failure.
+ */
+function account_already_activated($account) {
+  // aakoch - 2017.03.01 - TODO: implement method
+  // $account->hasField('activated');
+  //$user->activate() is a function, so there's that
+  //activated;
+  return $account->getLastLoginTime() == null;
 }
